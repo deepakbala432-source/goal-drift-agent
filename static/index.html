@@ -1,0 +1,123 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Goal Drift Agent</title>
+<style>
+body{font-family:Arial,sans-serif;margin:0;background:#f4f6f8;color:#18212f}
+header{background:#18212f;color:white;padding:22px 7%}
+main{max-width:1200px;margin:25px auto;padding:0 20px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:18px}
+.card{background:white;border-radius:14px;padding:20px;box-shadow:0 3px 16px #00000010}
+input,textarea,select,button{width:100%;box-sizing:border-box;padding:10px;margin:6px 0;border:1px solid #ccd3dc;border-radius:8px}
+button{background:#18212f;color:white;cursor:pointer}
+.stat{font-size:30px;font-weight:700}
+.chat{height:330px;overflow:auto;background:#fafafa;border-radius:10px;padding:12px}
+.msg{padding:10px;margin:8px 0;border-radius:10px;white-space:pre-wrap}
+.user{background:#e5eefc}.agent{background:#e9f5ea}
+.small{font-size:13px;color:#667085}
+</style>
+</head>
+<body>
+<header><h1>🎯 Goal Drift Agent</h1><div>LLM + Tools + Memory + Goal Alignment</div></header>
+<main>
+<div class="grid">
+<section class="card"><h2>Dashboard</h2><div id="stats">Loading...</div></section>
+<section class="card"><h2>Add Goal</h2>
+<input id="goalTitle" placeholder="Become a software developer">
+<textarea id="goalDesc" placeholder="Java, DSA, projects"></textarea>
+<input id="goalAreas" placeholder="Java, DSA, Projects">
+<select id="goalPriority"><option>high</option><option>medium</option><option>low</option></select>
+<input id="goalDeadline" placeholder="June 2027">
+<button onclick="addGoal()">Create Goal</button></section>
+<section class="card"><h2>Log Activity</h2>
+<input id="actName" placeholder="Studied Java">
+<input id="actCategory" placeholder="learning">
+<input id="actDuration" type="number" placeholder="90">
+<button onclick="addActivity()">Log Activity</button></section>
+</div>
+
+<section class="card" style="margin-top:18px"><h2>Agent</h2>
+<div id="chat" class="chat"></div>
+<textarea id="message" placeholder="Ask: Am I drifting from my software developer goal?"></textarea>
+<button onclick="sendMessage()">Send</button></section>
+
+<div class="grid" style="margin-top:18px">
+<section class="card"><h2>Goals</h2><div id="goals"></div></section>
+<section class="card"><h2>Recent Activities</h2><div id="activities"></div></section>
+<section class="card"><h2>Memory</h2><div id="memories"></div></section>
+</div>
+</main>
+<script>
+const chat=document.getElementById('chat');
+function addChat(role,text){
+ const d=document.createElement('div');
+ d.className='msg '+role;
+ d.textContent=text;
+ chat.appendChild(d);
+ chat.scrollTop=chat.scrollHeight;
+}
+async function api(url,opt){
+ const r=await fetch(url,opt);
+ return await r.json();
+}
+async function refresh(){
+ const [g,a,m]=await Promise.all([
+  api('/api/goals'),api('/api/activities'),api('/api/memories')
+ ]);
+ document.getElementById('goals').innerHTML =
+  g.map(x=>`<div><b>${x.title}</b><br>
+  <span class="small">${x.priority} · ${x.deadline||'No deadline'} · ${x.areas||''}</span></div><hr>`).join('')
+  || 'No goals yet.';
+ document.getElementById('activities').innerHTML =
+  a.slice(0,10).map(x=>`<div><b>${x.name}</b> — ${x.duration} min<br>
+  <span class="small">${x.category}</span></div><hr>`).join('')
+  || 'No activities yet.';
+ document.getElementById('memories').innerHTML =
+  m.slice(0,10).map(x=>`<div>${x.content}<br>
+  <span class="small">${x.memory_type} · importance ${x.importance}</span></div><hr>`).join('')
+  || 'No memories yet.';
+ document.getElementById('stats').innerHTML =
+  `<div class="stat">${g.filter(x=>x.status==='active').length}</div> active goals
+   <br><br><div class="stat">${a.reduce((s,x)=>s+Number(x.duration),0).toFixed(0)} min</div> logged activity`;
+}
+async function addGoal(){
+ const body={
+  title:goalTitle.value,description:goalDesc.value,areas:goalAreas.value,
+  priority:goalPriority.value,deadline:goalDeadline.value
+ };
+ await api('/api/goals',{
+  method:'POST',headers:{'Content-Type':'application/json'},
+  body:JSON.stringify(body)
+ });
+ refresh();
+}
+async function addActivity(){
+ const body={
+  name:actName.value,category:actCategory.value||'other',
+  duration:Number(actDuration.value)
+ };
+ await api('/api/activities',{
+  method:'POST',headers:{'Content-Type':'application/json'},
+  body:JSON.stringify(body)
+ });
+ refresh();
+}
+async function sendMessage(){
+ const text=message.value.trim();
+ if(!text)return;
+ addChat('user',text);
+ message.value='';
+ const r=await api('/agent',{
+  method:'POST',
+  headers:{'Content-Type':'application/json'},
+  body:JSON.stringify({message:text})
+ });
+ addChat('agent',r.response||r.detail||JSON.stringify(r));
+ refresh();
+}
+refresh();
+</script>
+</body>
+</html>
